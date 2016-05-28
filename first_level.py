@@ -7,10 +7,10 @@ from nipype.interfaces.io import SelectFiles, DataSink
 from nipype.pipeline.engine import Workflow, Node, MapNode
 
 # Specify variables
-subjdir = ['/data/mridata/jdeng/tools/first_level/IC005-1/rsfmri']
-seeds = ['/data/mridata/jbrown/brains/rois/rPCC_sphere.nii',
-         '/data/mridata/jbrown/brains/rois/44rvFI_vAt12_C2vx123.nii',
-         '/data/mridata/jbrown/brains/rois/Boxer_DMidbrainTeg_sphere_3-5_-15_-8.nii']
+subjdir = ['IC005-1']
+seeds = ['rPCC_sphere.nii',
+         '44rvFI_vAt12_C2vx123.nii',
+         'Boxer_DMidbrainTeg_sphere_3-5_-15_-8.nii']
 TR = 2.0
 
 experiment_dir = '/data/mridata/jdeng/tools/first_level/nipype'
@@ -23,8 +23,8 @@ infosource = Node(IdentityInterface(fields=['subject_path', 'seed_path']), name=
 infosource.iterables = [('subject_path', subjdir), ('seed_path', seeds)]
 
 # SelectFiles
-templates = {'func': '{subject_path}/processedfmri_TRCNnSFmDI/swua_filteredf*.nii',
-             'seed': '{seed_path}'}
+templates = {'func': '/data/mridata/jdeng/tools/first_level/{subject_path}/rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii',
+             'seed': '/data/mridata/jbrown/brains/rois/{seed_path}'}
 selectfiles = Node(SelectFiles(templates), name="selectfiles")
 
 # 1. Obtain timeseries for seed and nuisance variables
