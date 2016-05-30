@@ -29,13 +29,9 @@ templates = {'func': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmr
              'seed': '/data/mridata/jbrown/brains/rois/{seed_name}'}
 selectfiles = Node(SelectFiles(templates), name="selectfiles")
 
-# For distributing seed and nuisance mask paths
-# Merge Node to combine seed mask and nuisance mask paths
+# For merging seed and nuisance mask paths and then distributing them downstream
 seed_plus_nuisance = Node(utilMerge(2), name = 'seed_plus_nuisance')
 seed_plus_nuisance.inputs.in2 = nuisance_masks
-
-# For distributing seed and nuisance mask paths
-distributor = Node(IdentityInterface(fields=['rois']), name='distributor')
 
 # 1. Obtain timeseries for seed and nuisance variables
 # 1a. Merge all 3D functional images into a single 4D image
@@ -63,8 +59,7 @@ get_timeseries.connect([
     (selectfiles, merge, [('func', 'in_files')]),
     (merge, ts, [('merged_file', 'in_file')]),
     (selectfiles, seed_plus_nuisance, [('seed', 'in1')]),
-    (seed_plus_nuisance, distributor, [('out', 'rois')]),
-    (distributor, ts, [('rois', 'mask')]),
+    (seed_plus_nuisance, ts, [('out', 'mask')]),
     (ts, datasink, [('out_file', 'timeseries')])
                 ])
 
