@@ -26,7 +26,8 @@ infosource = Node(IdentityInterface(fields=['subject_name', 'seed_name']),
 infosource.iterables = [('subject_name', subjdir), ('seed_name', seeds)]
 
 templates = {'func': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii',
-             'seed': '/data/mridata/jbrown/brains/rois/{seed_name}'}
+             'seed': '/data/mridata/jbrown/brains/rois/{seed_name}',
+             'motion': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/interfmri_TRCNnSFmDI/motion_corr/rp*.txt'}
 selectfiles = Node(SelectFiles(templates), name="selectfiles")
 
 # For merging seed and nuisance mask paths and then distributing them downstream
@@ -41,6 +42,37 @@ merge = Node(Merge(dimension = 't',
 
 # 1b. Take mean of all voxels in each roi at each timepoint
 ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
+
+# 2. Merge nuisance ts
+def make_nuisance_regressors(in_file):
+    import numpy as np
+    import os
+    num_timepoints = 235    # change this to not be hard-coded
+    num_regressors = len(in_file) - 1
+    nuisance_regressors = np.zeros((num_timepoints, num_regressors))
+    
+    i = 0
+    for ts in in_file[1:]:
+        nuisance_regressors[:,i] = np.loadtxt(ts)[:]
+        i += 1
+        
+    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nuisance_regressors)
+    return(os.path.join(os.getcwd(), 'nuisance_regressors.txt'))
+    #return 'nuisance_regressors_test.txt' 
+    #np.savetxt('nuisance_regressors_test.txt', nuisance_regressors)
+
+make_nuisance_regressors = Node(Function(input_names = ['in_file'],
+                                         output_names = ['out_file'],
+                                         function = make_nuisance_regressors),
+                                name = 'make_nuisance_regressors')
+
+# add_two_interface = Function(input_names=["val"],
+#                              output_names=["out_val"],
+#                              function=add_two)
+
+# seed_nuisance_ts = np.loadtxt('')
+# motion_file = np.loadtxt('/data/mridata/jdeng/tools/first_level/IC005-1/rsfmri/interfmri_TRCNnSFmDI/motion_corr/rp_aRestingStatePHYSIOeyesclosedwholebrain_006.txt')
+# >>> np.savetxt('out.txt', np.column_stack((a1, a2)), delimiter=' ', fmt='%.5f')
 
 ## CREATE WORKFLOW
 # Create a short workflow to get the timeseries for seed + nuisance variables for each subject
@@ -60,9 +92,11 @@ get_timeseries.connect([
     (merge, ts, [('merged_file', 'in_file')]),
     (selectfiles, seed_plus_nuisance, [('seed', 'in1')]),
     (seed_plus_nuisance, ts, [('out', 'mask')]),
-    (ts, datasink, [('out_file', 'timeseries')])
+    (ts, make_nuisance_regressors, [('out_file', 'in_file')]),
+    (ts, datasink, [('out_file', 'timeseries')]),
+    (make_nuisance_regressors, datasink, [('out_file', 'nuisance_regressors')]),
                 ])
 
 # Visualize the workflow and run it
 get_timeseries.write_graph(graph2use='flat')
-get_timeseries.run()
+get_timeseries.run('MultiProc', plugin_args={'n_procs': 16})
