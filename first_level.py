@@ -44,35 +44,27 @@ merge = Node(Merge(dimension = 't',
 ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
 
 # 2. Merge nuisance ts
-def make_nuisance_regressors(in_file):
+def make_nuisance_regressors(regressors_ts_list, mot_params):
     import numpy as np
     import os
     num_timepoints = 235    # change this to not be hard-coded
-    num_regressors = len(in_file) - 1
+    num_regressors = len(regressors_ts_list) - 1
     nuisance_regressors = np.zeros((num_timepoints, num_regressors))
     
     i = 0
-    for ts in in_file[1:]:
+    for ts in regressors_ts_list[1:]:
         nuisance_regressors[:,i] = np.loadtxt(ts)[:]
         i += 1
-        
+    
+    nuisance_regressors = np.hstack((nuisance_regressors, np.loadtxt(mot_params)[:]))
+    
     np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nuisance_regressors)
     return(os.path.join(os.getcwd(), 'nuisance_regressors.txt'))
-    #return 'nuisance_regressors_test.txt' 
-    #np.savetxt('nuisance_regressors_test.txt', nuisance_regressors)
 
-make_nuisance_regressors = Node(Function(input_names = ['in_file'],
+make_nuisance_regressors = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
                                          output_names = ['out_file'],
                                          function = make_nuisance_regressors),
                                 name = 'make_nuisance_regressors')
-
-# add_two_interface = Function(input_names=["val"],
-#                              output_names=["out_val"],
-#                              function=add_two)
-
-# seed_nuisance_ts = np.loadtxt('')
-# motion_file = np.loadtxt('/data/mridata/jdeng/tools/first_level/IC005-1/rsfmri/interfmri_TRCNnSFmDI/motion_corr/rp_aRestingStatePHYSIOeyesclosedwholebrain_006.txt')
-# >>> np.savetxt('out.txt', np.column_stack((a1, a2)), delimiter=' ', fmt='%.5f')
 
 ## CREATE WORKFLOW
 # Create a short workflow to get the timeseries for seed + nuisance variables for each subject
@@ -92,7 +84,8 @@ get_timeseries.connect([
     (merge, ts, [('merged_file', 'in_file')]),
     (selectfiles, seed_plus_nuisance, [('seed', 'in1')]),
     (seed_plus_nuisance, ts, [('out', 'mask')]),
-    (ts, make_nuisance_regressors, [('out_file', 'in_file')]),
+    (ts, make_nuisance_regressors, [('out_file', 'regressors_ts_list')]),
+    (selectfiles, make_nuisance_regressors, [('motion', 'mot_params')]),
     (ts, datasink, [('out_file', 'timeseries')]),
     (make_nuisance_regressors, datasink, [('out_file', 'nuisance_regressors')]),
                 ])
