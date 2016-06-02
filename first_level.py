@@ -27,7 +27,7 @@ infosource.iterables = [('subject_name', subjdir), ('seed_name', seeds)]
 
 templates = {'func': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii',
              'seed': '/data/mridata/jbrown/brains/rois/{seed_name}',
-             'motion': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/interfmri_TRCNnSFmDI/motion_corr/rp*.txt'}
+             'motion': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/processedfmri_TRCNnSFmDI/motion_params_filtered.txt'}
 selectfiles = Node(SelectFiles(templates), name="selectfiles")
 
 # For merging seed and nuisance mask paths and then distributing them downstream
@@ -43,28 +43,46 @@ merge = Node(Merge(dimension = 't',
 # 1b. Take mean of all voxels in each roi at each timepoint
 ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
 
-# 2. Merge nuisance ts
+# 2. Merge nuisance ts with motion parameters
 def make_nuisance_regressors(regressors_ts_list, mot_params):
     import numpy as np
     import os
     num_timepoints = 235    # change this to not be hard-coded
     num_regressors = len(regressors_ts_list) - 1
-    nuisance_regressors = np.zeros((num_timepoints, num_regressors))
+    nr = np.zeros((num_timepoints, num_regressors))
     
     i = 0
     for ts in regressors_ts_list[1:]:
-        nuisance_regressors[:,i] = np.loadtxt(ts)[:]
+        nr[:,i] = np.loadtxt(ts)[:]
         i += 1
     
-    nuisance_regressors = np.hstack((nuisance_regressors, np.loadtxt(mot_params)[:]))
+    nr = np.hstack((nr, np.loadtxt(mot_params)[:]))
     
-    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nuisance_regressors)
+    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nr, fmt='%.7e', delimiter='   ')
     return(os.path.join(os.getcwd(), 'nuisance_regressors.txt'))
 
 make_nuisance_regressors = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
                                          output_names = ['out_file'],
                                          function = make_nuisance_regressors),
                                 name = 'make_nuisance_regressors')
+
+# 3. Take temporal derivatives of nuisance_regressors.txt and append to nuisance_regressors.txt
+# to create nuisance_regressors_tempderiv.txt
+def temp_deriv(raw_nr):
+    import numpy as np
+    import os
+    
+    raw_nr = np.loadtxt(raw_nr)
+    td = np.gradient(raw_nr, axis=0)
+    nr_td = np.hstack((raw_nr, td))
+    
+    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), nr_td, fmt='%.7e', delimiter='   ')
+    return(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'))
+
+temp_deriv = Node(Function(input_names = ['raw_nr'],
+                           output_names = ['out_file'],
+                           function = temp_deriv),
+                  name = 'temp_deriv')
 
 ## CREATE WORKFLOW
 # Create a short workflow to get the timeseries for seed + nuisance variables for each subject
@@ -86,8 +104,9 @@ get_timeseries.connect([
     (seed_plus_nuisance, ts, [('out', 'mask')]),
     (ts, make_nuisance_regressors, [('out_file', 'regressors_ts_list')]),
     (selectfiles, make_nuisance_regressors, [('motion', 'mot_params')]),
-    (ts, datasink, [('out_file', 'timeseries')]),
-    (make_nuisance_regressors, datasink, [('out_file', 'nuisance_regressors')]),
+    (make_nuisance_regressors, datasink, [('out_file', 'timeseries')]),
+    (make_nuisance_regressors, temp_deriv, [('out_file', 'raw_nr')]),
+    (temp_deriv, datasink, [('out_file', 'timeseries.@nr_td')])
                 ])
 
 # Visualize the workflow and run it
