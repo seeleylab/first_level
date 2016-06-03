@@ -43,46 +43,44 @@ merge = Node(Merge(dimension = 't',
 # 1b. Take mean of all voxels in each roi at each timepoint
 ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
 
-# 2. Merge nuisance ts with motion parameters
-def make_nuisance_regressors(regressors_ts_list, mot_params):
+# 1c. - Merge nuisance ts with motion parameters to create nuisance_regressors.txt.
+#     - Take temporal derivatives of nuisance_regressors.txt and append to nuisance_regressors.txt
+#       to create nuisance_regressors_tempderiv.txt
+#     - Square nuisance_regressors_tempderiv.txt and append to nuisance_regressors_tempderiv.txt,
+#       then append seed timeseries in front to create seed_nuisance_regressors.txt
+def make_regressors_files(regressors_ts_list, mot_params):
     import numpy as np
     import os
     num_timepoints = 235    # change this to not be hard-coded
     num_regressors = len(regressors_ts_list) - 1
-    nr = np.zeros((num_timepoints, num_regressors))
     
+    # make nuisance_regressors.txt
+    nr = np.zeros((num_timepoints, num_regressors))
+        
     i = 0
     for ts in regressors_ts_list[1:]:
         nr[:,i] = np.loadtxt(ts)[:]
         i += 1
-    
+        
     nr = np.hstack((nr, np.loadtxt(mot_params)[:]))
+    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nr, fmt='%.7e')
+    # make nuisance_regressors_tempderiv.txt
+    td = np.gradient(nr, axis=0)
+    nr_td = np.hstack((nr, td))
+    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), nr_td, fmt='%.7e')
+    # make seed_nuisance_regressors.txt
+    seed_ts = np.loadtxt(regressors_ts_list[0])[:]
+    sq = np.square(nr_td)
+    snr = np.hstack((seed_ts[:, np.newaxis], nr_td, sq))
+    np.savetxt(os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt'), snr, fmt='%.7e')
     
-    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nr, fmt='%.7e', delimiter='   ')
-    return(os.path.join(os.getcwd(), 'nuisance_regressors.txt'))
+    # return nuisance_regressors.txt, nuisance_regressors_tempderiv.txt, and seed_nuisance_regressors.txt
+    return os.path.join(os.getcwd(), 'nuisance_regressors.txt'), os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt')
 
-make_nuisance_regressors = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
-                                         output_names = ['out_file'],
-                                         function = make_nuisance_regressors),
-                                name = 'make_nuisance_regressors')
-
-# 3. Take temporal derivatives of nuisance_regressors.txt and append to nuisance_regressors.txt
-# to create nuisance_regressors_tempderiv.txt
-def temp_deriv(raw_nr):
-    import numpy as np
-    import os
-    
-    raw_nr = np.loadtxt(raw_nr)
-    td = np.gradient(raw_nr, axis=0)
-    nr_td = np.hstack((raw_nr, td))
-    
-    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), nr_td, fmt='%.7e', delimiter='   ')
-    return(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'))
-
-temp_deriv = Node(Function(input_names = ['raw_nr'],
-                           output_names = ['out_file'],
-                           function = temp_deriv),
-                  name = 'temp_deriv')
+make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
+                                      output_names = ['nr', 'nr_td', 'snr'],
+                                      function = make_regressors_files),
+                                name = 'make_regressors_files')
 
 ## CREATE WORKFLOW
 # Create a short workflow to get the timeseries for seed + nuisance variables for each subject
@@ -97,16 +95,17 @@ datasink.inputs.substitutions = substitutions
 
 # Connect all components of the workflow
 get_timeseries.connect([
-    (infosource, selectfiles, [('subject_name', 'subject_name'), ('seed_name', 'seed_name')]),
+    (infosource, selectfiles, [('subject_name', 'subject_name'),
+        ('seed_name', 'seed_name')]),
     (selectfiles, merge, [('func', 'in_files')]),
     (merge, ts, [('merged_file', 'in_file')]),
     (selectfiles, seed_plus_nuisance, [('seed', 'in1')]),
     (seed_plus_nuisance, ts, [('out', 'mask')]),
-    (ts, make_nuisance_regressors, [('out_file', 'regressors_ts_list')]),
-    (selectfiles, make_nuisance_regressors, [('motion', 'mot_params')]),
-    (make_nuisance_regressors, datasink, [('out_file', 'timeseries')]),
-    (make_nuisance_regressors, temp_deriv, [('out_file', 'raw_nr')]),
-    (temp_deriv, datasink, [('out_file', 'timeseries.@nr_td')])
+    (ts, make_regressors_files, [('out_file', 'regressors_ts_list')]),
+    (selectfiles, make_regressors_files, [('motion', 'mot_params')]),
+    (make_regressors_files, datasink, [('nr', 'timeseries'),
+        ('nr_td', 'timeseries.@nr_td'),
+        ('snr', 'timeseries.@snr')]),
                 ])
 
 # Visualize the workflow and run it
