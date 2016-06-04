@@ -63,19 +63,22 @@ def make_regressors_files(regressors_ts_list, mot_params):
         i += 1
         
     nr = np.hstack((nr, np.loadtxt(mot_params)[:]))
-    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors.txt'), nr, fmt='%.7e')
+    nr_path = os.path.join(os.getcwd(), 'nuisance_regressors.txt')
+    np.savetxt(nr_path, nr, fmt='%.7e')
     # make nuisance_regressors_tempderiv.txt
-    td = np.gradient(nr, axis=0)
-    nr_td = np.hstack((nr, td))
-    np.savetxt(os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), nr_td, fmt='%.7e')
+    import tempderiv_nipype
+    tempderiv_nipype.tempderiv(nr_path)
+    nr_td_path = os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt')
     # make seed_nuisance_regressors.txt
     seed_ts = np.loadtxt(regressors_ts_list[0])[:]
+    nr_td = np.loadtxt(nr_td_path)[:]
     sq = np.square(nr_td)
     snr = np.hstack((seed_ts[:, np.newaxis], nr_td, sq))
-    np.savetxt(os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt'), snr, fmt='%.7e')
+    snr_path = os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt')
+    np.savetxt(snr_path, snr)
     
     # return nuisance_regressors.txt, nuisance_regressors_tempderiv.txt, and seed_nuisance_regressors.txt
-    return os.path.join(os.getcwd(), 'nuisance_regressors.txt'), os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt')
+    return nr_path, nr_td_path, snr_path
 
 make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
                                       output_names = ['nr', 'nr_td', 'snr'],
