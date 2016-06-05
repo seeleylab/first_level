@@ -1,6 +1,7 @@
 # Import necessary modules
 from os.path import join as opj
 from nipype.interfaces.fsl import Merge, ImageMeants
+from nipype.algorithms.modelgen import SpecifySPMModel
 from nipype.interfaces.spm import Level1Design
 from nipype.interfaces.utility import Function, IdentityInterface
 from nipype.interfaces.utility import Merge as utilMerge
@@ -81,6 +82,21 @@ make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_
                                       output_names = ['nr', 'nr_td', 'snr'],
                                       function = make_regressors_files),
                                 name = 'make_regressors_files')
+# 2. Build statistical model
+session_info = Node(SpecifySPMModel(high_pass_filter_cutoff = 128),
+                    name = 'session_info')
+
+job_stats = Node(Level1Design(timing_units = 'secs',
+                              interscan_interval = 2.0,
+                              microtime_resolution = 16,
+                              microtime_onset = 1,
+                              bases = {'hrf':{'derivs': [0,0]}},
+                              volterra_expansion_order = 2,
+                              global_intensity_normalization = 'none',
+                              mask_threshold = 0.8,
+                              mask_image = 'None',
+                              model_serial_correlations = 'AR(1)'),
+                 name = 'job_stats')
 
 ## CREATE WORKFLOW
 # Create a short workflow to get the timeseries for seed + nuisance variables for each subject
