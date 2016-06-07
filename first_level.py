@@ -83,7 +83,25 @@ make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_
                                       function = make_regressors_files),
                                 name = 'make_regressors_files')
 # 2. Build statistical model
-session_info = Node(SpecifySPMModel(high_pass_filter_cutoff = 128),
+# 2a. Create SPM.mat design matrix
+def get_subject_info(regressors_file):
+    from nipype.interfaces.base import Bunch
+    import numpy as np
+    subject_info = []
+    subject_info.append(Bunch(regressors = np.loadtxt(regressors_file).T.tolist()))
+    return subject_info
+
+get_subject_info = Node(Function(input_names = ['regressors_file'],
+                                 output_names = ['subject_info'],
+                                 function = get_subject_info),
+                        name = 'get_subject_info')
+
+def makelist(item):
+    return [item]
+
+session_info = Node(SpecifySPMModel(high_pass_filter_cutoff = 128,
+                                    input_units = 'secs',
+                                    time_repetition = 2.0),
                     name = 'session_info')
 
 job_stats = Node(Level1Design(timing_units = 'secs',
@@ -91,11 +109,11 @@ job_stats = Node(Level1Design(timing_units = 'secs',
                               microtime_resolution = 16,
                               microtime_onset = 1,
                               bases = {'hrf':{'derivs': [0,0]}},
-                              volterra_expansion_order = 2,
                               global_intensity_normalization = 'none',
+                              mask_image = '/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/MNI152_T1_2mm_brain_mask_dilated.nii',
                               mask_threshold = 0.8,
-                              mask_image = 'None',
-                              model_serial_correlations = 'AR(1)'),
+                              model_serial_correlations = 'AR(1)',
+                              volterra_expansion_order = 2),
                  name = 'job_stats')
 
 ## CREATE WORKFLOW
@@ -122,6 +140,11 @@ get_timeseries.connect([
     (make_regressors_files, datasink, [('nr', 'timeseries'),
         ('nr_td', 'timeseries.@nr_td'),
         ('snr', 'timeseries.@snr')]),
+    (selectfiles, session_info, [(('func', makelist), 'functional_runs')]),
+    (make_regressors_files, get_subject_info, [('snr', 'regressors_file')]),
+    (get_subject_info, session_info, [('subject_info', 'subject_info')]),
+    (session_info, job_stats, [('session_info', 'session_info')]),
+    (job_stats, datasink, [('spm_mat_file', 'job')])
                 ])
 
 # Visualize the workflow and run it
