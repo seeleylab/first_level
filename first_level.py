@@ -116,7 +116,9 @@ model_spec = Node(Level1Design(timing_units = 'secs',
 est_model = Node(EstimateModel(estimation_method = {'Classical': 1}),
                  name = 'est_model')
 
-condition_vector = ['seed'] + ['nuisance']*33
+# condition_vector = ['UR1'] + ['nuisance']*33
+# condition_vector = ['UR1', 'UR2', 'UR3', 'UR4', 'UR5', 'UR6', 'UR7', 'UR8', 'UR9', 'UR10', 'UR11', 'UR12', 'UR13', 'UR14', 'UR15', 'UR16', 'UR17', 'UR18', 'UR19', 'UR20', 'UR21', 'UR22', 'UR23', 'UR24', 'UR25', 'UR26', 'UR27', 'UR28', 'UR29', 'UR30', 'UR31', 'UR32', 'UR33', 'constant']
+condition_vector = ['UR' + i for i in map(str, range(1,34))] + ['constant']
 weights_vector = [float(1)] + [float(0)]*33
 
 est_con = Node(EstimateContrast(contrasts = [('Condition1', 'T', condition_vector, weights_vector)]),
