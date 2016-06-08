@@ -2,7 +2,7 @@
 from os.path import join as opj
 from nipype.interfaces.fsl import Merge, ImageMeants
 from nipype.algorithms.modelgen import SpecifySPMModel
-from nipype.interfaces.spm import Level1Design
+from nipype.interfaces.spm import Level1Design, EstimateModel, EstimateContrast
 from nipype.interfaces.utility import Function, IdentityInterface
 from nipype.interfaces.utility import Merge as utilMerge
 from nipype.interfaces.io import SelectFiles, DataSink
@@ -96,15 +96,12 @@ get_subject_info = Node(Function(input_names = ['regressors_file'],
                                  function = get_subject_info),
                         name = 'get_subject_info')
 
-def makelist(item):
-    return [item]
-
 session_info = Node(SpecifySPMModel(high_pass_filter_cutoff = 128,
                                     input_units = 'secs',
                                     time_repetition = 2.0),
                     name = 'session_info')
 
-job_stats = Node(Level1Design(timing_units = 'secs',
+model_spec = Node(Level1Design(timing_units = 'secs',
                               interscan_interval = 2.0,
                               microtime_resolution = 16,
                               microtime_onset = 1,
@@ -114,10 +111,19 @@ job_stats = Node(Level1Design(timing_units = 'secs',
                               mask_threshold = 0.8,
                               model_serial_correlations = 'AR(1)',
                               volterra_expansion_order = 2),
-                 name = 'job_stats')
+                 name = 'model_spec')
+
+est_model = Node(EstimateModel(estimation_method = {'Classical': 1}),
+                 name = 'est_model')
+
+condition_vector = ['seed'] + ['nuisance']*33
+weights_vector = [float(1)] + [float(0)]*33
+
+est_con = Node(EstimateContrast(contrasts = [('Condition1', 'T', condition_vector, weights_vector)]),
+                                name = 'est_con')
 
 ## CREATE WORKFLOW
-# Create a short workflow to get the timeseries for seed + nuisance variables for each subject
+# Create a workflow to return the seed nuisance regressors and seed map(s) for a subject
 get_timeseries = Workflow(name='get_timeseries')
 get_timeseries.base_dir = experiment_dir
 
@@ -126,6 +132,10 @@ datasink = Node(DataSink(base_directory=experiment_dir, container=output_dir), n
 
 substitutions = [('_subject_name_', '_'), ('_seed_name_', '')]
 datasink.inputs.substitutions = substitutions
+
+# Helper functions for connections
+def makelist(item):
+    return [item]
 
 # Connect all components of the workflow
 get_timeseries.connect([
@@ -143,8 +153,14 @@ get_timeseries.connect([
     (selectfiles, session_info, [(('func', makelist), 'functional_runs')]),
     (make_regressors_files, get_subject_info, [('snr', 'regressors_file')]),
     (get_subject_info, session_info, [('subject_info', 'subject_info')]),
-    (session_info, job_stats, [('session_info', 'session_info')]),
-    (job_stats, datasink, [('spm_mat_file', 'job')])
+    (session_info, model_spec, [('session_info', 'session_info')]),
+    (model_spec, est_model, [('spm_mat_file', 'spm_mat_file')]),
+    (est_model, est_con, [('beta_images', 'beta_images'),
+        ('residual_image', 'residual_image'),
+        ('spm_mat_file', 'spm_mat_file')]),
+    (est_con, datasink, [('spm_mat_file', 'job_stats'),
+        ('con_images', 'images'),
+        ('spmT_images', 'images.@T')])
                 ])
 
 # Visualize the workflow and run it
