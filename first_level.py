@@ -1,7 +1,7 @@
 # Import necessary modules
 from os.path import join as opj
 from nipype.interfaces.fsl import Merge, ImageMeants
-from nipype.algorithms.modelgen import SpecifySPMModel
+from nipype.algorithms.modelgen import SpecifyModel
 from nipype.interfaces.spm import Level1Design, EstimateModel, EstimateContrast
 from nipype.interfaces.utility import Function, IdentityInterface
 from nipype.interfaces.utility import Merge as utilMerge
@@ -88,7 +88,8 @@ def get_subject_info(regressors_file):
     from nipype.interfaces.base import Bunch
     import numpy as np
     subject_info = []
-    subject_info.append(Bunch(regressors = np.loadtxt(regressors_file).T.tolist()))
+    subject_info.append(Bunch(regressors = np.loadtxt(regressors_file).T.tolist(),
+                              regressor_names = ['seed'] + ['nuisance']*32 + ['constant']))
     return subject_info
 
 get_subject_info = Node(Function(input_names = ['regressors_file'],
@@ -96,7 +97,7 @@ get_subject_info = Node(Function(input_names = ['regressors_file'],
                                  function = get_subject_info),
                         name = 'get_subject_info')
 
-session_info = Node(SpecifySPMModel(high_pass_filter_cutoff = 128,
+session_info = Node(SpecifyModel(high_pass_filter_cutoff = 128,
                                     input_units = 'secs',
                                     time_repetition = 2.0),
                     name = 'session_info')
@@ -115,7 +116,9 @@ model_spec = Node(Level1Design(timing_units = 'secs',
 est_model = Node(EstimateModel(estimation_method = {'Classical': 1}),
                  name = 'est_model')
 
-condition_vector = ['UR' + i for i in map(str, range(1,34))] + ['constant']
+
+#condition_vector = ['UR' + i for i in map(str, range(1,34))] + ['constant']
+condition_vector = ['seed'] + ['nuisance']*32 + ['constant']
 weights_vector = [float(1)] + [float(0)]*33
 
 est_con = Node(EstimateContrast(contrasts = [('Condition1', 'T', condition_vector, weights_vector)]),
