@@ -18,7 +18,7 @@ nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_pos
 TR = 2.0
 
 experiment_dir = '/data/mridata/jdeng/tools/first_level/nipype'
-output_dir = 'get_timeseries_output'
+output_dir = 'first_level_output'
 
 ## CREATE NODES
 # For distributing subject paths
@@ -115,8 +115,6 @@ model_spec = Node(Level1Design(timing_units = 'secs',
 est_model = Node(EstimateModel(estimation_method = {'Classical': 1}),
                  name = 'est_model')
 
-# condition_vector = ['UR1'] + ['nuisance']*33
-# condition_vector = ['UR1', 'UR2', 'UR3', 'UR4', 'UR5', 'UR6', 'UR7', 'UR8', 'UR9', 'UR10', 'UR11', 'UR12', 'UR13', 'UR14', 'UR15', 'UR16', 'UR17', 'UR18', 'UR19', 'UR20', 'UR21', 'UR22', 'UR23', 'UR24', 'UR25', 'UR26', 'UR27', 'UR28', 'UR29', 'UR30', 'UR31', 'UR32', 'UR33', 'constant']
 condition_vector = ['UR' + i for i in map(str, range(1,34))] + ['constant']
 weights_vector = [float(1)] + [float(0)]*33
 
@@ -125,8 +123,8 @@ est_con = Node(EstimateContrast(contrasts = [('Condition1', 'T', condition_vecto
 
 ## CREATE WORKFLOW
 # Create a workflow to return the seed nuisance regressors and seed map(s) for a subject
-get_timeseries = Workflow(name='get_timeseries')
-get_timeseries.base_dir = experiment_dir
+first_level = Workflow(name='first_level')
+first_level.base_dir = experiment_dir
 
 # Datasink
 datasink = Node(DataSink(base_directory=experiment_dir, container=output_dir), name="datasink")
@@ -139,7 +137,7 @@ def makelist(item):
     return [item]
 
 # Connect all components of the workflow
-get_timeseries.connect([
+first_level.connect([
     (infosource, selectfiles, [('subject_name', 'subject_name'),
         ('seed_name', 'seed_name')]),
     (selectfiles, merge, [('func', 'in_files')]),
@@ -165,5 +163,5 @@ get_timeseries.connect([
                 ])
 
 # Visualize the workflow and run it
-get_timeseries.write_graph(graph2use='flat')
-get_timeseries.run('MultiProc', plugin_args={'n_procs': 16})
+first_level.write_graph(graph2use='flat')
+first_level.run('MultiProc', plugin_args={'n_procs': 16})
