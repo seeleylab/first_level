@@ -1,4 +1,4 @@
 .PHONY: clean
 
 clean:
-	@rm -rf get_timeseries* crash*
+	@rm -rf first_level first_level_output crash*
