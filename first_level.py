@@ -53,10 +53,10 @@ def make_regressors_files(regressors_ts_list, mot_params):
     import numpy as np
     import os
     num_timepoints = 235    # change this to not be hard-coded
-    num_regressors = len(regressors_ts_list) - 1
+    num_nuisance = len(regressors_ts_list) - 1
     
     # make nuisance_regressors.txt
-    nr = np.zeros((num_timepoints, num_regressors))
+    nr = np.zeros((num_timepoints, num_nuisance))
         
     i = 0
     for ts in regressors_ts_list[1:]:
@@ -84,18 +84,22 @@ make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_
                                 name = 'make_regressors_files')
 # 2. Build statistical model
 # 2a. Create SPM.mat design matrix
-def get_subject_info(regressors_file):
+def model_helper(regressors_file):
     from nipype.interfaces.base import Bunch
     import numpy as np
-    subject_info = []
-    subject_info.append(Bunch(regressors = np.loadtxt(regressors_file).T.tolist(),
-                              regressor_names = ['seed'] + ['nuisance']*32 + ['constant']))
-    return subject_info
+    regressors_file_data = np.loadtxt(regressors_file).T.tolist()
+    num_regressors = len(regressors_file_data)
+    condition_vector = ['seed'] + ['nuisance']*(num_regressors-1) + ['constant']
+    weights_vector = [float(1)] + [float(0)]*(num_regressors-1) + [float(0)]
+    contrasts = [('Condition1', 'T', condition_vector, weights_vector)]
+    subject_info = [(Bunch(regressors = regressors_file_data,
+                           regressor_names = ['seed'] + ['nuisance']*(num_regressors-1) + ['constant']))]
+    return subject_info, contrasts
 
-get_subject_info = Node(Function(input_names = ['regressors_file'],
-                                 output_names = ['subject_info'],
-                                 function = get_subject_info),
-                        name = 'get_subject_info')
+model_helper = Node(Function(input_names = ['regressors_file'],
+                             output_names = ['subject_info', 'contrasts'],
+                             function = model_helper),
+                        name = 'model_helper')
 
 session_info = Node(SpecifyModel(high_pass_filter_cutoff = 128,
                                     input_units = 'secs',
@@ -116,13 +120,8 @@ model_spec = Node(Level1Design(timing_units = 'secs',
 est_model = Node(EstimateModel(estimation_method = {'Classical': 1}),
                  name = 'est_model')
 
-
-#condition_vector = ['UR' + i for i in map(str, range(1,34))] + ['constant']
-condition_vector = ['seed'] + ['nuisance']*32 + ['constant']
-weights_vector = [float(1)] + [float(0)]*33
-
-est_con = Node(EstimateContrast(contrasts = [('Condition1', 'T', condition_vector, weights_vector)]),
-                                name = 'est_con')
+est_con = Node(EstimateContrast(),
+               name = 'est_con')
 
 ## CREATE WORKFLOW
 # Create a workflow to return the seed nuisance regressors and seed map(s) for a subject
@@ -152,14 +151,15 @@ first_level.connect([
     (make_regressors_files, datasink, [('nr', 'timeseries'),
         ('nr_td', 'timeseries.@nr_td'),
         ('snr', 'timeseries.@snr')]),
+    (make_regressors_files, model_helper, [('snr', 'regressors_file')]),
     (selectfiles, session_info, [(('func', makelist), 'functional_runs')]),
-    (make_regressors_files, get_subject_info, [('snr', 'regressors_file')]),
-    (get_subject_info, session_info, [('subject_info', 'subject_info')]),
+    (model_helper, session_info, [('subject_info', 'subject_info')]),
     (session_info, model_spec, [('session_info', 'session_info')]),
     (model_spec, est_model, [('spm_mat_file', 'spm_mat_file')]),
     (est_model, est_con, [('beta_images', 'beta_images'),
         ('residual_image', 'residual_image'),
         ('spm_mat_file', 'spm_mat_file')]),
+    (model_helper, est_con, [('contrasts', 'contrasts')]),
     (est_con, datasink, [('spm_mat_file', 'job_stats'),
         ('con_images', 'images'),
         ('spmT_images', 'images.@T')])
@@ -167,4 +167,5 @@ first_level.connect([
 
 # Visualize the workflow and run it
 first_level.write_graph(graph2use='flat')
-first_level.run('MultiProc', plugin_args={'n_procs': 16})
+first_level.run(plugin = 'MultiProc', plugin_args = {'n_procs': 16})
+#first_level.run(plugin = 'SGEGraph', plugin_args = {template : '/data/mridata/jdeng/tools/grid/q.sh'})
