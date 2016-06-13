@@ -167,5 +167,5 @@ first_level.connect([
 
 # Visualize the workflow and run it
 first_level.write_graph(graph2use='flat')
-first_level.run(plugin = 'MultiProc', plugin_args = {'n_procs': 16})
-#first_level.run(plugin = 'SGEGraph', plugin_args = {template : '/data/mridata/jdeng/tools/grid/q.sh'})
+#first_level.run(plugin = 'MultiProc', plugin_args = {'n_procs': 16})
+first_level.run(plugin='SGE', plugin_args=dict(template='/data/mridata/jdeng/tools/grid/q.sh'))
