@@ -131,7 +131,7 @@ first_level.base_dir = experiment_dir
 # Datasink
 datasink = Node(DataSink(base_directory=experiment_dir, container=output_dir), name="datasink")
 
-substitutions = [('_subject_name_', '_'), ('_seed_name_', '')]
+substitutions = [('_subject_name_', '_'), ('_seed_name_', ''), ('.nii', '')]
 datasink.inputs.substitutions = substitutions
 
 # Helper functions for connections
