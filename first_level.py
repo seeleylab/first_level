@@ -1,18 +1,20 @@
 # Import necessary modules
+import sys
 from os.path import join as opj
 from nipype.interfaces.fsl import Merge, ImageMeants
 from nipype.algorithms.modelgen import SpecifyModel
 from nipype.interfaces.spm import Level1Design, EstimateModel, EstimateContrast
 from nipype.interfaces.utility import Function, IdentityInterface
 from nipype.interfaces.utility import Merge as utilMerge
-from nipype.interfaces.io import SelectFiles, DataSink
+from nipype.interfaces.io import DataGrabber, DataSink
 from nipype.pipeline.engine import Workflow, Node, MapNode
 
 # Specify variables
-subjdir = ['IC005-1']
-seeds = ['rPCC_sphere.nii',
-         '44rvFI_vAt12_C2vx123.nii',
-         'Boxer_DMidbrainTeg_sphere_3-5_-15_-8.nii']
+#subjdir = raw_input('Input the absolute paths to your subjects: ').split()
+subjdir = sys.argv[1].split()
+subjdir = [path.strip('/') for path in subjdir]
+#seed_paths = raw_input('Input the absolute paths to the seeds: ').split()
+seed_paths = sys.argv[2].split()
 nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_post_bilateral.nii',
                   '/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/avg152T1_white_mask.nii']
 TR = 2.0
@@ -22,14 +24,20 @@ output_dir = 'first_level_output'
 
 ## CREATE NODES
 # For distributing subject paths
-infosource = Node(IdentityInterface(fields=['subject_name', 'seed_name']),
+infosource = Node(IdentityInterface(fields=['subject_path', 'seed']),
                   name="infosource")
-infosource.iterables = [('subject_name', subjdir), ('seed_name', seeds)]
+infosource.iterables = [('subject_path', subjdir), ('seed', seed_paths)]
 
-templates = {'func': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii',
-             'seed': '/data/mridata/jbrown/brains/rois/{seed_name}',
-             'motion': '/data/mridata/jdeng/tools/first_level/{subject_name}/rsfmri/processedfmri_TRCNnSFmDI/motion_params_filtered.txt'}
-selectfiles = Node(SelectFiles(templates), name="selectfiles")
+info = dict(func = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii']],
+            motion = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/motion_params_filtered.txt']])
+
+selectfiles = Node(DataGrabber(infields = ['subject_path'],
+                              outfields = ['func', 'motion'],
+                              base_directory = '/',
+                              template = '%s/%s',
+                              template_args = info,
+                              sort_filelist = True),
+                  name = 'selectfiles')
 
 # For merging seed and nuisance mask paths and then distributing them downstream
 seed_plus_nuisance = Node(utilMerge(2), name = 'seed_plus_nuisance')
@@ -131,7 +139,7 @@ first_level.base_dir = experiment_dir
 # Datasink
 datasink = Node(DataSink(base_directory=experiment_dir, container=output_dir), name="datasink")
 
-substitutions = [('_subject_name_', '_'), ('_seed_name_', ''), ('.nii', '')]
+substitutions = [('_subject_name_', '_'), ('_seed_name_', '')]
 datasink.inputs.substitutions = substitutions
 
 # Helper functions for connections
@@ -140,11 +148,10 @@ def makelist(item):
 
 # Connect all components of the workflow
 first_level.connect([
-    (infosource, selectfiles, [('subject_name', 'subject_name'),
-        ('seed_name', 'seed_name')]),
+    (infosource, selectfiles, [('subject_path', 'subject_path')]),
     (selectfiles, merge, [('func', 'in_files')]),
     (merge, ts, [('merged_file', 'in_file')]),
-    (selectfiles, seed_plus_nuisance, [('seed', 'in1')]),
+    (infosource, seed_plus_nuisance, [('seed', 'in1')]),
     (seed_plus_nuisance, ts, [('out', 'mask')]),
     (ts, make_regressors_files, [('out_file', 'regressors_ts_list')]),
     (selectfiles, make_regressors_files, [('motion', 'mot_params')]),
@@ -167,5 +174,4 @@ first_level.connect([
 
 # Visualize the workflow and run it
 first_level.write_graph(graph2use='flat')
-#first_level.run(plugin = 'MultiProc', plugin_args = {'n_procs': 16})
 first_level.run(plugin='SGE', plugin_args=dict(template='/data/mridata/jdeng/tools/grid/q.sh'))
