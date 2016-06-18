@@ -1,5 +1,4 @@
 # Import necessary modules
-import sys
 from os.path import join as opj
 from nipype.interfaces.fsl import Merge, ImageMeants
 from nipype.algorithms.modelgen import SpecifyModel
@@ -10,13 +9,25 @@ from nipype.interfaces.io import DataGrabber, DataSink
 from nipype.pipeline.engine import Workflow, Node, MapNode
 
 # Specify variables
-#subjdir = raw_input('Input the absolute paths to your subjects: ').split()
-subjdir = sys.argv[1].split()
-subjdir = [path.strip('/') for path in subjdir]
-#seed_paths = raw_input('Input the absolute paths to the seeds: ').split()
-seed_paths = sys.argv[2].split()
+subjdir = []
+print('Enter the absolute paths to your subjects. Hit Enter until next prompt appears: ')
+while True:
+    subj_path = raw_input()
+    if subj_path == '':
+        break
+    subjdir.append(subj_path.strip('/'))
+
+all_seeds = []
+print('Enter the absolute paths to your seed files. Hit Enter until you see that processing has started: ')
+while True:
+    seed_path = raw_input()
+    if seed_path == '':
+        break
+    all_seeds.append(seed_path)
+
 nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_post_bilateral.nii',
                   '/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/avg152T1_white_mask.nii']
+
 TR = 2.0
 
 experiment_dir = '/data/mridata/jdeng/tools/first_level/nipype'
@@ -26,7 +37,7 @@ output_dir = 'first_level_output'
 # For distributing subject paths
 infosource = Node(IdentityInterface(fields=['subject_path', 'seed']),
                   name="infosource")
-infosource.iterables = [('subject_path', subjdir), ('seed', seed_paths)]
+infosource.iterables = [('subject_path', subjdir), ('seed', all_seeds)]
 
 info = dict(func = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii']],
             motion = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/motion_params_filtered.txt']])
