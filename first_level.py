@@ -15,7 +15,7 @@ while True:
     subj_path = raw_input()
     if subj_path == '':
         break
-    subjdir.append(subj_path.strip('/'))
+    subjdir.append(subj_path.strip().strip('/'))
 
 all_seeds = []
 print('Enter the absolute paths to your seed files. Hit Enter until you see that processing has started: ')
@@ -23,7 +23,7 @@ while True:
     seed_path = raw_input()
     if seed_path == '':
         break
-    all_seeds.append(seed_path)
+    all_seeds.append(seed_path.strip())
 
 nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_post_bilateral.nii',
                   '/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/avg152T1_white_mask.nii']
@@ -58,7 +58,7 @@ seed_plus_nuisance.inputs.in2 = nuisance_masks
 # 1a. Merge all 3D functional images into a single 4D image
 merge = Node(Merge(dimension = 't',
                    output_type = 'NIFTI',
-                   tr = 2.0), name = 'merge')
+                   tr = TR), name = 'merge')
 
 # 1b. Take mean of all voxels in each roi at each timepoint
 ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
@@ -68,10 +68,10 @@ ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
 #       to create nuisance_regressors_tempderiv.txt
 #     - Square nuisance_regressors_tempderiv.txt and append to nuisance_regressors_tempderiv.txt,
 #       then append seed timeseries in front to create seed_nuisance_regressors.txt
-def make_regressors_files(regressors_ts_list, mot_params):
+def make_regressors_files(regressors_ts_list, mot_params, func):
     import numpy as np
     import os
-    num_timepoints = 235    # change this to not be hard-coded
+    num_timepoints = len(func)
     num_nuisance = len(regressors_ts_list) - 1
     
     # make nuisance_regressors.txt
@@ -97,7 +97,7 @@ def make_regressors_files(regressors_ts_list, mot_params):
     # return nuisance_regressors.txt, nuisance_regressors_tempderiv.txt, and seed_nuisance_regressors.txt
     return os.path.join(os.getcwd(), 'nuisance_regressors.txt'), os.path.join(os.getcwd(), 'nuisance_regressors_tempderiv.txt'), os.path.join(os.getcwd(), 'seed_nuisance_regressors.txt')
 
-make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_params'],
+make_regressors_files = Node(Function(input_names = ['regressors_ts_list', 'mot_params', 'func'],
                                       output_names = ['nr', 'nr_td', 'snr'],
                                       function = make_regressors_files),
                                 name = 'make_regressors_files')
@@ -166,6 +166,7 @@ first_level.connect([
     (seed_plus_nuisance, ts, [('out', 'mask')]),
     (ts, make_regressors_files, [('out_file', 'regressors_ts_list')]),
     (selectfiles, make_regressors_files, [('motion', 'mot_params')]),
+    (selectfiles, make_regressors_files, [('func', 'func')]),
     (make_regressors_files, datasink, [('nr', 'timeseries'),
         ('nr_td', 'timeseries.@nr_td'),
         ('snr', 'timeseries.@snr')]),
