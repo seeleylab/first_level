@@ -30,9 +30,6 @@ nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_pos
 
 TR = 2.0
 
-experiment_dir = '/data/mridata/jdeng/tools/first_level/nipype'
-output_dir = 'first_level_output'
-
 ## CREATE NODES
 # For distributing subject paths
 infosource = Node(IdentityInterface(fields=['subject_path', 'seed']),
@@ -145,10 +142,11 @@ est_con = Node(EstimateContrast(),
 ## CREATE WORKFLOW
 # Create a workflow to return the seed nuisance regressors and seed map(s) for a subject
 first_level = Workflow(name='first_level')
-first_level.base_dir = experiment_dir
+first_level.base_dir = '/data/mridata/jdeng/tools/first_level/nipype'
 
 # Datasink
-datasink = Node(DataSink(base_directory=experiment_dir, container=output_dir), name="datasink")
+ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
+datasink = MapNode(DataSink(), name="datasink", iterfield=['base_directory', 'container'])
 
 substitutions = [('_subject_name_', '_'), ('_seed_name_', '')]
 datasink.inputs.substitutions = substitutions
@@ -156,6 +154,9 @@ datasink.inputs.substitutions = substitutions
 # Helper functions for connections
 def makelist(item):
     return [item]
+
+def make_stats_FC(path):
+    return 'stats_FC_' + path.split('/')[-1].strip('.nii')
 
 # Connect all components of the workflow
 first_level.connect([
@@ -179,11 +180,13 @@ first_level.connect([
         ('residual_image', 'residual_image'),
         ('spm_mat_file', 'spm_mat_file')]),
     (model_helper, est_con, [('contrasts', 'contrasts')]),
+    (infosource, datasink, [('subject_path', 'base_directory'),
+        (('seed', make_stats_FC), 'container')]),
     (est_con, datasink, [('spm_mat_file', 'job_stats'),
         ('con_images', 'images'),
         ('spmT_images', 'images.@T')])
                 ])
 
-# Visualize the workflow and run it
+# Visualize the workflow and run it with SGE
 first_level.write_graph(graph2use='flat')
 first_level.run(plugin='SGE', plugin_args=dict(template='/data/mridata/jdeng/tools/grid/q.sh'))
