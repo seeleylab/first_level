@@ -36,8 +36,8 @@ infosource = Node(IdentityInterface(fields=['subject_path', 'seed']),
                   name="infosource")
 infosource.iterables = [('subject_path', subjdir), ('seed', all_seeds)]
 
-info = dict(func = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii']],
-            motion = [['subject_path', 'rsfmri/processedfmri_TRCNnSFmDI/motion_params_filtered.txt']])
+info = dict(func = [['subject_path', '/processedfmri_TRCNnSFmDI/images/swua_filteredf*.nii']],
+            motion = [['subject_path', '/processedfmri_TRCNnSFmDI/motion_params_filtered.txt']])
 
 selectfiles = Node(DataGrabber(infields = ['subject_path'],
                               outfields = ['func', 'motion'],
@@ -145,15 +145,15 @@ first_level = Workflow(name='first_level')
 first_level.base_dir = '/data/mridata/jdeng/tools/first_level/nipype'
 
 # Datasink
-ts = MapNode(ImageMeants(), name = 'ts', iterfield = ['mask'])
-datasink = MapNode(DataSink(), name="datasink", iterfield=['base_directory', 'container'])
-
-substitutions = [('_subject_name_', '_'), ('_seed_name_', '')]
-datasink.inputs.substitutions = substitutions
+substitutions = [('output', '')]
+datasink = MapNode(DataSink(parameterization=False, substitutions = substitutions), name="datasink", iterfield=['base_directory', 'container'])
 
 # Helper functions for connections
-def makelist(item):
+def make_list(item):
     return [item]
+
+def make_basedir(path):
+    return '/' + path + '/processedfmri_TRCNnSFmDI'
 
 def make_stats_FC(path):
     return 'stats_FC_' + path.split('/')[-1].strip('.nii')
@@ -172,7 +172,7 @@ first_level.connect([
         ('nr_td', 'timeseries.@nr_td'),
         ('snr', 'timeseries.@snr')]),
     (make_regressors_files, model_helper, [('snr', 'regressors_file')]),
-    (selectfiles, session_info, [(('func', makelist), 'functional_runs')]),
+    (selectfiles, session_info, [(('func', make_list), 'functional_runs')]),
     (model_helper, session_info, [('subject_info', 'subject_info')]),
     (session_info, model_spec, [('session_info', 'session_info')]),
     (model_spec, est_model, [('spm_mat_file', 'spm_mat_file')]),
@@ -180,11 +180,11 @@ first_level.connect([
         ('residual_image', 'residual_image'),
         ('spm_mat_file', 'spm_mat_file')]),
     (model_helper, est_con, [('contrasts', 'contrasts')]),
-    (infosource, datasink, [('subject_path', 'base_directory'),
+    (infosource, datasink, [(('subject_path', make_basedir), 'base_directory'),
         (('seed', make_stats_FC), 'container')]),
-    (est_con, datasink, [('spm_mat_file', 'job_stats'),
-        ('con_images', 'images'),
-        ('spmT_images', 'images.@T')])
+    (est_con, datasink, [('spm_mat_file', 'output.@job'),
+        ('con_images', 'output.@con'),
+        ('spmT_images', 'output.@T')])
                 ])
 
 # Visualize the workflow and run it with SGE
