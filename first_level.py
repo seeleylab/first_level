@@ -8,7 +8,8 @@ from nipype.interfaces.utility import Merge as utilMerge
 from nipype.interfaces.io import DataGrabber, DataSink
 from nipype.pipeline.engine import Workflow, Node, MapNode
 
-# Specify variables
+## SPECIFY VARIABLES
+# Subjects
 subjdir = []
 print('Enter the absolute paths to your subjects. Hit Enter until next prompt appears: ')
 while True:
@@ -17,6 +18,7 @@ while True:
         break
     subjdir.append(subj_path.strip().strip('/'))
 
+# Seeds (any .mat files will be converted to .nii files--so to be efficient use .nii seeds)
 all_seeds = []
 print('Enter the absolute paths to your seed files. Hit Enter until you see that processing has started: ')
 while True:
@@ -24,10 +26,35 @@ while True:
     if seed_path == '':
         break
     all_seeds.append(seed_path.strip())
+    
+def mat_to_nii(mat_roi_path):
+    import nipype.interfaces.matlab as matlab
+    import os
+    mlab = matlab.MatlabCommand()
+    mlab.inputs.script = """
+    marsbar on
+    load %s
+    save_as_image(roi, '%s')
+    """%(mat_roi_path, mat_roi_path.strip('_roi.mat')+'.nii')
+    mlab.run()
 
+for i in range(0, len(all_seeds)):
+    if all_seeds[i].endswith('_roi.mat'):
+        print 'Converting %s from .mat to .nii...' %(all_seeds[i])
+        mat_to_nii(all_seeds[i])
+        all_seeds[i] = all_seeds[i].replace('_roi.mat', '.nii')
+        print 'Done converting %s from .mat to .nii\n' %(all_seeds[i])
+
+# for s in all_seeds:
+#     if s.endswith('_roi.mat'):
+#         mat_to_nii(s)
+#         s = s.replace('_roi.mat', '.nii')
+
+# Nuisance variables
 nuisance_masks = ['/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/csf_ant_post_bilateral.nii',
                   '/data/mridata/SeeleyToolbox/SeeleyFirstLevel/proc/avg152T1_white_mask.nii']
 
+# TR
 TR = 2.0
 
 ## CREATE NODES
